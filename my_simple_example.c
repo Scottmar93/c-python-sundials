@@ -3,6 +3,7 @@
 
 #include "residual.h" // add the residual header file
 #include "jacobian.h" // add the jacobian header file
+#include "events.h"   // add the events header file
 
 #include <stdio.h>
 #include <math.h>
@@ -64,6 +65,10 @@ double myFun(double t_end, double y0[], double yp0[])
 
   retval = IDASVtolerances(ida_mem, rtol, avtol);
 
+  // set events
+  int num_of_events = 2;
+  retval = IDARootInit(ida_mem, num_of_events, events);
+
   // set linear solver
   A = SUNDenseMatrix(NEQ, NEQ);
   LS = SUNLinSol_Dense(yy, A);
@@ -76,7 +81,12 @@ double myFun(double t_end, double y0[], double yp0[])
   {
     // IDA_ONE_STEP_TSTOP
     // IDA_NORMAL
-    IDASolve(ida_mem, tout, &tret, yy, yp, IDA_ONE_STEP);
+    retval = IDASolve(ida_mem, tout, &tret, yy, yp, IDA_ONE_STEP);
+
+    if (retval == IDA_ROOT_RETURN)
+    {
+      break;
+    }
 
     printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
 

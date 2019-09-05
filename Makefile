@@ -34,7 +34,7 @@ LIBRARIES = -lsundials_idas -lsundials_nvecserial ${LIBS}
 # -----------------------------------------------------------------------------------------
 
 EXAMPLES = my_simple_example
-EXAMPLES_DEPENDENCIES = residual jacobian
+EXAMPLES_DEPENDENCIES = residual jacobian events
 
 OBJECTS = ${EXAMPLES:=.o}
 OBJECTS_DEPENDENCIES = ${EXAMPLES_DEPENDENCIES:=.o}
