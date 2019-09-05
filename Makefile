@@ -34,7 +34,7 @@ LIBRARIES = -lsundials_idas -lsundials_nvecserial ${LIBS}
 # -----------------------------------------------------------------------------------------
 
 EXAMPLES = my_simple_example
-EXAMPLES_DEPENDENCIES = residual
+EXAMPLES_DEPENDENCIES = residual jacobian
 
 OBJECTS = ${EXAMPLES:=.o}
 OBJECTS_DEPENDENCIES = ${EXAMPLES_DEPENDENCIES:=.o}
@@ -66,6 +66,6 @@ ${OBJECTS}: ${OBJECTS_DEPENDENCIES}
 clean:
 	rm -f ${OBJECTS_DEPENDENCIES} 
 	rm -f ${OBJECTS}
-	rm -f ${EXAMPLES}
+	rm -f ${EXAMPLES}.so
 
 

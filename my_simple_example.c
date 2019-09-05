@@ -2,6 +2,7 @@
 // next step is to add function to different file
 
 #include "residual.h" // add the residual header file
+#include "jacobian.h" // add the jacobian header file
 
 #include <stdio.h>
 #include <math.h>
@@ -18,7 +19,7 @@
 
 /* main program */
 
-int *myFun(double t_end, double y0[], double yp0[])
+double myFun(double t_end, double y0[], double yp0[])
 {
   void *ida_mem;          // pointer to memory
   N_Vector yy, yp, avtol; // y, y', and absolute tolerance
@@ -68,14 +69,18 @@ int *myFun(double t_end, double y0[], double yp0[])
   LS = SUNLinSol_Dense(yy, A);
   retval = IDASetLinearSolver(ida_mem, LS, A);
 
+  retval = IDASetJacFn(ida_mem, jacobian);
+
   t = RCONST(0.0);
   while (tret < tout)
   {
     // IDA_ONE_STEP_TSTOP
     // IDA_NORMAL
-    IDASolve(ida_mem, tout, &tret, yy, yp, IDA_NORMAL);
+    IDASolve(ida_mem, tout, &tret, yy, yp, IDA_ONE_STEP);
 
     printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
+
+    t = tret;
   }
 
   /* Free memory */
@@ -86,5 +91,5 @@ int *myFun(double t_end, double y0[], double yp0[])
   N_VDestroy(yy);
   N_VDestroy(yp);
 
-  return 0;
+  return t;
 }

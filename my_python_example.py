@@ -21,7 +21,7 @@ fun.myFun.argtypes = [ctypes.c_double, array_1d_double, array_1d_double]
 # set return types
 # fun.myFun.restype = ctypes.c_double
 
-fun.myFun.restype = ctypes.c_int
+fun.myFun.restype = ctypes.c_double
 
 x = np.array([8.0, 6.0])
 
@@ -30,4 +30,4 @@ y0 = np.array([0.0, 1.0])
 yp0 = np.array([1.0, 0.0])
 out = fun.myFun(t, y0, yp0)
 
-print("The final is", out)
+print("The final time is", out)
