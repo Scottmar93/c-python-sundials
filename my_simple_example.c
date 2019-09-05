@@ -18,7 +18,7 @@
 
 /* main program */
 
-int main(void)
+int *myFun(double t_end, double y0[], double yp0[])
 {
   void *ida_mem;          // pointer to memory
   N_Vector yy, yp, avtol; // y, y', and absolute tolerance
@@ -37,17 +37,17 @@ int main(void)
 
   // set initial value
   yval = N_VGetArrayPointer(yy);
-  yval[0] = RCONST(0.0);
-  yval[1] = RCONST(1.0);
+  yval[0] = RCONST(y0[0]);
+  yval[1] = RCONST(y0[1]);
 
   ypval = N_VGetArrayPointer(yp);
-  ypval[0] = RCONST(1.0);
-  ypval[1] = RCONST(0.0);
+  ypval[0] = RCONST(yp0[0]);
+  ypval[1] = RCONST(yp0[1]);
 
   // set times
   t0 = RCONST(0.0);
   tout1 = RCONST(1.0);
-  tout = RCONST(1.0);
+  tout = RCONST(t_end);
 
   // allocate memory for solver
   ida_mem = IDACreate();
@@ -69,13 +69,13 @@ int main(void)
   retval = IDASetLinearSolver(ida_mem, LS, A);
 
   t = RCONST(0.0);
-  while (t < tout)
+  while (tret < tout)
   {
-    IDASolve(ida_mem, tout, &tret, yy, yp, IDA_ONE_STEP);
+    // IDA_ONE_STEP_TSTOP
+    // IDA_NORMAL
+    IDASolve(ida_mem, tout, &tret, yy, yp, IDA_NORMAL);
 
     printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
-
-    t = tret;
   }
 
   /* Free memory */
@@ -86,5 +86,5 @@ int main(void)
   N_VDestroy(yy);
   N_VDestroy(yp);
 
-  return t;
+  return 0;
 }
