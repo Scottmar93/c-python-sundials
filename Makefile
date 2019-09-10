@@ -10,7 +10,7 @@ CPPFLAGS = -O3 -DNDEBUG
 CC       = /usr/bin/cc
 CFLAGS   = -O3 -DNDEBUG
 LDFLAGS  = 
-LIBS     =  -lm /usr/lib/x86_64-linux-gnu/librt.so
+LIBS     =  -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas
 
 LINKFLAGS = -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib
 
@@ -47,7 +47,7 @@ OBJECTS_DEPENDENCIES = ${EXAMPLES_DEPENDENCIES:=.o}
 	${CC} ${CPPFLAGS} ${CFLAGS} ${INCLUDES} -c $<
 
 # -----------------------------------------------------------------------------------------
-all: python_shared_example 
+all: python_shared_example
 
 my_simple_example: ${OBJECTS}
 	@for i in ${EXAMPLES} ; do \
