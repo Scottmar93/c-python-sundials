@@ -35,3 +35,23 @@ int residual(realtype tres, N_Vector yy, N_Vector yp, N_Vector rr, void *user_da
 
     return 0;
 }
+
+int add(int i, int j)
+{
+    return i + j;
+}
+
+#include <pybind11/pybind11.h>
+namespace py = pybind11;
+
+PYBIND11_MODULE(residual, m)
+{
+    m.doc() = "pybind11 example plugin"; // optional module docstring
+
+    m.def("add", &add, "A function which adds two numbers",
+          py::arg("i"), py::arg("j"));
+
+    m.attr("the_answer") = 42;
+    py::object world = py::cast("World");
+    m.attr("what") = world;
+} // namespace py=pybind11PYBIND11_MODULE(residual,m)
