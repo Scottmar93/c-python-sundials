@@ -18,14 +18,28 @@
 
 #define NEQ 2
 
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+#include <pybind11/functional.h>
+namespace py = pybind11;
+
 /* main program */
 
-double myFun(double t_end, double y0[], double yp0[])
+py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, py::array_t<double> yp0_np)
 {
+  auto t = t_np.unchecked<1>();
+  // auto y0 = y0_np.unchecked<1>();
+  auto yp0 = yp0_np.unchecked<1>();
+
+  auto y00 = y0_np.request();
+  double *y0 = (double *)y00.ptr;
+
+  printf("t size %d", y00.size);
+  int number_of_equations = y00.size;
+
   void *ida_mem;          // pointer to memory
   N_Vector yy, yp, avtol; // y, y', and absolute tolerance
   realtype rtol, *yval, *ypval, *atval;
-  realtype t0, t, tout1, tout, tret;
   int iout, retval, retvalr;
   int rootsfound[2];
   SUNMatrix A;
@@ -43,18 +57,19 @@ double myFun(double t_end, double y0[], double yp0[])
   yval[1] = RCONST(y0[1]);
 
   ypval = N_VGetArrayPointer(yp);
-  ypval[0] = RCONST(yp0[0]);
-  ypval[1] = RCONST(yp0[1]);
+  ypval[0] = RCONST(yp0(0));
+  ypval[1] = RCONST(yp0(1));
 
-  // set times
-  t0 = RCONST(0.0);
-  tout1 = RCONST(1.0);
-  tout = RCONST(t_end);
+  // // set times
+  // t0 = RCONST(0.0);
+  // tout1 = RCONST(1.0);
+  // tout = RCONST(t_end);
 
   // allocate memory for solver
   ida_mem = IDACreate();
 
   // initialise solver
+  realtype t0 = RCONST(0.0);
   retval = IDAInit(ida_mem, residual, t0, yy, yp);
 
   // set tolerances
@@ -76,12 +91,14 @@ double myFun(double t_end, double y0[], double yp0[])
 
   retval = IDASetJacFn(ida_mem, jacobian);
 
-  t = RCONST(0.0);
-  while (tret < tout)
+  realtype tout, tret;
+  realtype t_final = t(99);
+
+  while (tret < t_final)
   {
     // IDA_ONE_STEP_TSTOP
     // IDA_NORMAL
-    retval = IDASolve(ida_mem, tout, &tret, yy, yp, IDA_ONE_STEP);
+    retval = IDASolve(ida_mem, t_final, &tret, yy, yp, IDA_ONE_STEP);
 
     if (retval == IDA_ROOT_RETURN)
     {
@@ -89,8 +106,6 @@ double myFun(double t_end, double y0[], double yp0[])
     }
 
     printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
-
-    t = tret;
   }
 
   /* Free memory */
@@ -98,9 +113,41 @@ double myFun(double t_end, double y0[], double yp0[])
   SUNLinSolFree(LS);
   SUNMatDestroy(A);
   N_VDestroy(avtol);
-  N_VDestroy(yy);
   N_VDestroy(yp);
 
-  return t;
+  printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
+
+  return py::array_t<double>(number_of_equations, yval);
 }
 
+class PybammRHS
+{
+public:
+  using function_type = std::function<double(double, double, double)>;
+
+  PybammRHS(const function_type &f)
+      : m_f(f)
+  {
+  }
+
+  double operator()(double x, double f, double t)
+  {
+    return m_f(x, f, t);
+  }
+
+private:
+  function_type m_f;
+};
+
+PYBIND11_MODULE(sundials, m)
+{
+  m.doc() = "sundials solvers"; // optional module docstring
+
+  m.def("solve", &solve, "The solve function",
+        py::arg("t"), py::arg("y0"), py::arg("yp0"),
+        py::return_value_policy::take_ownership);
+
+  py::class_<PybammRHS>(m, "RHS")
+      .def(py::init<const PybammRHS::function_type &>())
+      .def("__call__", &PybammRHS::operator());
+}

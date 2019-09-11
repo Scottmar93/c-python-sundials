@@ -48,7 +48,7 @@ OBJECTS_DEPENDENCIES = ${EXAMPLES_DEPENDENCIES:=.o}
 	${CC} ${CFLAGS} ${INCLUDES} -c $<
 
 # -----------------------------------------------------------------------------------------
-all: just_res
+all: my_pybind
 
 my_simple_example: ${OBJECTS}
 	@for i in ${EXAMPLES} ; do \
@@ -62,15 +62,17 @@ python_shared_example: ${OBJECTS}
 	  ${CC} -FPIC -shared -o $${i}.so $${i}.o ${OBJECTS_DEPENDENCIES} ${CFLAGS} ${LDFLAGS} ${INCLUDES} -L${libdir} ${LIBRARIES} ${LINKFLAGS} ; \
 	done
 
-pybind: ${OBJECTS}
-	@for i in ${EXAMPLES} ; do \
-	  echo "${CC} -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/usr/include/python3.6m -o $${i}`python3-config --extension-suffix`${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${CFLAGS} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} "; \
-	  ${CC} -O3 -Wall -shared -std=c++11 -fPIC -I/usr/include/python3.6m `python3 -m pybind11 --includes` ${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} -o $${i}`python3-config --extension-suffix`;
-	done
+my_pybind:
+	# @for i in ${EXAMPLES} ; do \
+	#   echo "${CC} -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/usr/include/python3.6m -o $${i}`python3-config --extension-suffix`${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${CFLAGS} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} "; \
+	#   ${CC} -O3 -Wall -shared -std=c++11 -fPIC -I/usr/include/python3.6m `python3 -m pybind11 --includes` ${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} -o $${i}`python3-config --extension-suffix`;
+	# done
+	g++ -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/home/scott/Projects/ida_test/sundials/instdir/include -o sundials`python3-config --extension-suffix` my_simple_example.cpp residual.c jacobian.c events.c -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
 
 just_res: 
 	# g++ -O3 -Wall -shared -I/home/scott/Projects/ida_test/sundials/instdir/include -o residual.so residual.c -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
 	g++ -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/home/scott/Projects/ida_test/sundials/instdir/include -o residual`python3-config --extension-suffix` residual.c -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
+
 
 ${OBJECTS}: ${OBJECTS_DEPENDENCIES}
 
