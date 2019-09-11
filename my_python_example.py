@@ -10,11 +10,22 @@ time = sundials.solve(t, y0, yp0)
 print(time)
 
 
-def my_fun(t, y, z):
-    return t + y + z
+def rhs(t, y, yp):
+
+    out = np.zeros((3,))
+
+    out[0] = y[0]
+    out[1] = yp[1]
+    out[2] = t
+
+    return out
 
 
-rhs_function = sundials.RHS(my_fun)
+rhs_function = sundials.RHS(rhs)
 
-print(rhs_function(1, 2, 3))
+t = 1
+y = [10, 5]
+y0 = [100, 50]
+
+print(rhs_function(t, y, y0))
 

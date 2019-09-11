@@ -123,16 +123,16 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
 class PybammRHS
 {
 public:
-  using function_type = std::function<double(double, double, double)>;
+  using function_type = std::function<py::array_t<double>(double, py::array_t<double>, py::array_t<double>)>;
 
   PybammRHS(const function_type &f)
       : m_f(f)
   {
   }
 
-  double operator()(double x, double f, double t)
+  py::array_t<double> operator()(const double t, py::array_t<double> y, py::array_t<double> yp)
   {
-    return m_f(x, f, t);
+    return m_f(t, y, yp);
   }
 
 private:
