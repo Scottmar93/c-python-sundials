@@ -1,6 +1,7 @@
 import sundials
 import numpy as np
 
+# times and initial conditions
 t = np.linspace(0, 0.2, 100)
 y0 = np.array([0.0, 1.0])
 yp0 = np.array([1.0, 0.0])
@@ -9,7 +10,7 @@ yp0 = np.array([1.0, 0.0])
 # Standard pybamm functions
 def rhs(t, y):
     r = np.zeros((2,))
-    r[0] = 5 * y[1]
+    r[0] = 5 * y[1] + y[0]
     r[1] = 1 - y[1]
     return r
 
@@ -43,7 +44,14 @@ def jac_res(t, y, cj):
     return J
 
 
-time = sundials.solve(t, y0, yp0, res, jac_res, events)
+num_of_states = 2
+num_of_events = 2
+
+use_jac = 0  # 1 to use, 0 to turn off
+
+time = sundials.solve(
+    t, y0, yp0, res, jac_res, events, num_of_states, num_of_events, use_jac
+)
 
 print(time)
 

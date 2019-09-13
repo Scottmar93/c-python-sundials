@@ -32,10 +32,13 @@ using np_array = py::array_t<double>;
 class PybammFunctions
 {
 public:
-  PybammFunctions(const residual_type &res, const jacobian_type &jac, const event_type &event)
-      : py_res(res), py_jac(jac), py_event(event)
+  PybammFunctions(const residual_type &res, const jacobian_type &jac, const event_type &event, const int n_s, int n_e)
+      : py_res(res), py_jac(jac), py_event(event), number_of_states(n_s), number_of_events(n_e)
   {
   }
+
+  int number_of_states;
+  int number_of_events;
 
   py::array_t<double> operator()(double t, py::array_t<double> y, py::array_t<double> yp)
   {
@@ -73,19 +76,19 @@ int residual(realtype tres, N_Vector yy, N_Vector yp, N_Vector rr, void *user_da
   ypval = N_VGetArrayPointer(yp);
   rval = N_VGetArrayPointer(rr);
 
-  py::array_t<double> y_np = py::array_t<double>(2, yval);
-  py::array_t<double> yp_np = py::array_t<double>(2, ypval);
+  int n = python_functions.number_of_states;
+  py::array_t<double> y_np = py::array_t<double>(n, yval);
+  py::array_t<double> yp_np = py::array_t<double>(n, ypval);
 
   py::array_t<double> r_np;
 
-  double a = 1.0; // do this until figure out how to convert realtype to double
-  r_np = python_functions.res(a, y_np, yp_np);
+  r_np = python_functions.res(tres, y_np, yp_np);
 
   double *r_np_ptr = (double *)r_np.request().ptr;
 
   // just copying data
   int i;
-  for (i = 0; i < r_np.request().size; i++)
+  for (i = 0; i < n; i++)
   {
     rval[i] = r_np_ptr[i];
   }
@@ -105,13 +108,9 @@ int jacobian(realtype tt, realtype cj,
   PybammFunctions *python_functions_ptr = static_cast<PybammFunctions *>(user_data);
   PybammFunctions python_functions = *python_functions_ptr;
 
-  py::array_t<double> y_np = py::array_t<double>(2, yval);
-  py::array_t<double> yp_np = py::array_t<double>(2, ypval);
-
-  // SM_ELEMENT_D(JJ, 0, 0) = -cj;
-  // SM_ELEMENT_D(JJ, 0, 1) = RCONST(1.0);
-  // SM_ELEMENT_D(JJ, 1, 0) = RCONST(0.0);
-  // SM_ELEMENT_D(JJ, 1, 1) = RCONST(-1.0);
+  int n = python_functions.number_of_states;
+  py::array_t<double> y_np = py::array_t<double>(n, yval);
+  py::array_t<double> yp_np = py::array_t<double>(n, ypval);
 
   // create pointer to data
   realtype *jac_data_ptr = SM_DATA_D(JJ);
@@ -123,8 +122,9 @@ int jacobian(realtype tt, realtype cj,
   double *jac_np_data_ptr = (double *)jac_np_array.request().ptr;
 
   // just copying data into Sunmatrix (figure out how to pass pointers later)
+  int j_size = n * n;
   int i;
-  for (i = 0; i < jac_np_array.request().size; i++)
+  for (i = 0; i < j_size; i++)
   {
     jac_data_ptr[i] = jac_np_data_ptr[i];
   }
@@ -179,7 +179,10 @@ int events(realtype t, N_Vector yy, N_Vector yp, realtype *events_ptr,
 
 /* main program */
 
-np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res, jacobian_type jac, event_type event)
+np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
+               residual_type res, jacobian_type jac, event_type event,
+               int number_of_states, int number_of_events,
+               int use_jacobian)
 {
   auto t = t_np.unchecked<1>();
   // auto y0 = y0_np.unchecked<1>();
@@ -192,8 +195,6 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res
 
   auto y00 = y0_np.request();
   double *y0 = (double *)y00.ptr;
-
-  int number_of_equations = y00.size;
 
   void *ida_mem;          // pointer to memory
   N_Vector yy, yp, avtol; // y, y', and absolute tolerance
@@ -240,16 +241,15 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res
   retval = IDASVtolerances(ida_mem, rtol, avtol);
 
   // set events
-  int num_of_events = 2;
-  retval = IDARootInit(ida_mem, num_of_events, events);
+  retval = IDARootInit(ida_mem, number_of_events, events);
 
   // set pybamm functions by passing pointer to it
-  PybammFunctions pybamm_functions(res, jac, event);
+  PybammFunctions pybamm_functions(res, jac, event, number_of_states, number_of_events);
   void *user_data = &pybamm_functions;
   IDASetUserData(ida_mem, user_data);
 
   // set linear solver
-  J = SUNDenseMatrix(NEQ, NEQ); // jacobian type (must be dense for dense solvers, p183 of ida_guide.pdf)
+  J = SUNDenseMatrix(number_of_states, number_of_states); // jacobian type (must be dense for dense solvers, p183 of ida_guide.pdf)
   LS = SUNLinSol_Dense(yy, J);
   retval = IDASetLinearSolver(ida_mem, LS, J);
 
@@ -259,7 +259,11 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res
   // realtype *csr_index_vals_ptr = SM_INDEXVALS_S(JJ);
   // realtype *csr_index_ptrs_ptr = SM_INDEXPTRS_S(JJ);
 
-  retval = IDASetJacFn(ida_mem, jacobian);
+  if (use_jacobian == 1)
+  {
+    printf("\nSetting jacobian \n");
+    retval = IDASetJacFn(ida_mem, jacobian);
+  }
 
   realtype tout, tret;
   realtype t_final = t(99);
@@ -287,7 +291,7 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res
 
   printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
 
-  return py::array_t<double>(number_of_equations, yval);
+  return py::array_t<double>(number_of_states, yval);
 }
 
 PYBIND11_MODULE(sundials, m)
@@ -295,10 +299,13 @@ PYBIND11_MODULE(sundials, m)
   m.doc() = "sundials solvers"; // optional module docstring
 
   m.def("solve", &solve, "The solve function",
-        py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"), py::arg("events"), py::return_value_policy::take_ownership);
+        py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"),
+        py::arg("events"), py::arg("number_of_states"), py::arg("number_of_events"),
+        py::arg("use_jacobian"),
+        py::return_value_policy::take_ownership);
 
   py::class_<PybammFunctions>(m, "PyBaMM Functions")
-      .def(py::init<const residual_type &, const jacobian_type &, const event_type &>())
+      .def(py::init<const residual_type &, const jacobian_type &, const event_type &, const int &, const int &>())
       .def("__call__", &PybammFunctions::operator());
   // .def("rhs"), &PybammFunctions::rhs());
 }
