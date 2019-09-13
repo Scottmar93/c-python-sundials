@@ -81,8 +81,14 @@ int residual(realtype tres, N_Vector yy, N_Vector yp, N_Vector rr, void *user_da
   double a = 1.0; // do this until figure out how to convert realtype to double
   r_np = python_functions.res(a, y_np, yp_np);
 
-  rval = (double *)r_np.request().ptr;
+  double *r_np_ptr = (double *)r_np.request().ptr;
 
+  // just copying data
+  int i;
+  for (i = 0; i < r_np.request().size; i++)
+  {
+    rval[i] = r_np_ptr[i];
+  }
   return 0;
 }
 

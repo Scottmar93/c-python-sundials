@@ -9,7 +9,7 @@ yp0 = np.array([1.0, 0.0])
 # Standard pybamm functions
 def rhs(t, y):
     r = np.zeros((2,))
-    r[0] = 10 * y[1]
+    r[0] = 5 * y[1]
     r[1] = 1 - y[1]
     return r
 
@@ -30,7 +30,7 @@ def events(t, y):
     return g
 
 
-# function residual and jac res required by sundials
+# the residual and jacobian residual are required by sundials
 def res(t, y, yp):
     r = rhs(t, y)
     r[0] += -yp[0]
