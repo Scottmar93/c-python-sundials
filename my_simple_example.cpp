@@ -181,12 +181,14 @@ int events(realtype t, N_Vector yy, N_Vector yp, realtype *events_ptr,
 
 np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
                residual_type res, jacobian_type jac, event_type event,
-               int number_of_states, int number_of_events,
-               int use_jacobian)
+               int number_of_events, int use_jacobian)
 {
   auto t = t_np.unchecked<1>();
   // auto y0 = y0_np.unchecked<1>();
   auto yp0 = yp0_np.unchecked<1>();
+
+  int number_of_states;
+  number_of_states = y0_np.request().size;
 
   // create class
   // SetUserData pass pointer to my_rhs
@@ -200,24 +202,30 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
   N_Vector yy, yp, avtol; // y, y', and absolute tolerance
   realtype rtol, *yval, *ypval, *atval;
   int iout, retval, retvalr;
-  int rootsfound[2];
+  int rootsfound[number_of_events];
   SUNMatrix J;
   SUNLinearSolver LS;
   SUNNonlinearSolver NLS;
 
   // allocate vectors
-  yy = N_VNew_Serial(NEQ);
-  yp = N_VNew_Serial(NEQ);
-  avtol = N_VNew_Serial(NEQ);
+  yy = N_VNew_Serial(number_of_states);
+  yp = N_VNew_Serial(number_of_states);
+  avtol = N_VNew_Serial(number_of_states);
 
   // set initial value
   yval = N_VGetArrayPointer(yy);
-  yval[0] = RCONST(y0[0]);
-  yval[1] = RCONST(y0[1]);
-
   ypval = N_VGetArrayPointer(yp);
-  ypval[0] = RCONST(yp0(0));
-  ypval[1] = RCONST(yp0(1));
+  // yval[0] = RCONST(y0[0]);
+  // yval[1] = RCONST(y0[1]);
+  int i;
+  for (i = 0; i < number_of_states; i++)
+  {
+    yval[i] = y0[i];
+    ypval[i] = yp0[i];
+  }
+
+  // ypval[0] = RCONST(yp0(0));
+  // ypval[1] = RCONST(yp0(1));
 
   // // set times
   // t0 = RCONST(0.0);
@@ -235,8 +243,11 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
   // set tolerances
   rtol = RCONST(1.0e-4);
   atval = N_VGetArrayPointer(avtol);
-  atval[0] = RCONST(1.0e-8);
-  atval[1] = RCONST(1.0e-6);
+
+  for (i = 0; i < number_of_states; i++)
+  {
+    atval[i] = RCONST(1.0e-8); // nb: this can be set differently for each state
+  }
 
   retval = IDASVtolerances(ida_mem, rtol, avtol);
 
@@ -300,7 +311,7 @@ PYBIND11_MODULE(sundials, m)
 
   m.def("solve", &solve, "The solve function",
         py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"),
-        py::arg("events"), py::arg("number_of_states"), py::arg("number_of_events"),
+        py::arg("events"), py::arg("number_of_events"),
         py::arg("use_jacobian"),
         py::return_value_policy::take_ownership);
 
