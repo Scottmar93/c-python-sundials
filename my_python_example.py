@@ -9,7 +9,7 @@ yp0 = np.array([1.0, 0.0])
 # Standard pybamm functions
 def rhs(t, y):
     r = np.zeros((2,))
-    r[0] = y[1]
+    r[0] = 10 * y[1]
     r[1] = 1 - y[1]
     return r
 
@@ -21,6 +21,13 @@ def jac(t, y):
     J[1][0] = 0.0
     J[1][1] = -1.0
     return J
+
+
+def events(t, y):
+    g = np.zeros((2,))
+    g[0] = y[0] - 1.0
+    g[1] = y[1] - 0.0
+    return g
 
 
 # function residual and jac res required by sundials
@@ -36,7 +43,7 @@ def jac_res(t, y, cj):
     return J
 
 
-time = sundials.solve(t, y0, yp0, res, jac_res)
+time = sundials.solve(t, y0, yp0, res, jac_res, events)
 
 print(time)
 

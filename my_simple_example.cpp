@@ -3,7 +3,7 @@
 
 // #include "residual.h" // add the residual header file
 // #include "jacobian.h" // add the jacobian header file
-#include "events.h" // add the events header file
+// #include "events.h" // add the events header file
 
 #include <stdio.h>
 #include <math.h>
@@ -26,13 +26,14 @@ namespace py = pybind11;
 
 using residual_type = std::function<py::array_t<double>(double, py::array_t<double>, py::array_t<double>)>;
 using jacobian_type = std::function<py::array_t<double>(double, py::array_t<double>, double)>;
+using event_type = std::function<py::array_t<double>(double, py::array_t<double>)>;
 using np_array = py::array_t<double>;
 
 class PybammFunctions
 {
 public:
-  PybammFunctions(const residual_type &res, const jacobian_type &jac)
-      : py_res(res), py_jac(jac)
+  PybammFunctions(const residual_type &res, const jacobian_type &jac, const event_type &event)
+      : py_res(res), py_jac(jac), py_event(event)
   {
   }
 
@@ -51,9 +52,15 @@ public:
     return py_jac(t, y, cj);
   }
 
+  np_array events(double t, np_array y)
+  {
+    return py_event(t, y);
+  }
+
 private:
   residual_type py_res;
   jacobian_type py_jac;
+  event_type py_event;
 };
 
 int residual(realtype tres, N_Vector yy, N_Vector yp, N_Vector rr, void *user_data)
@@ -105,7 +112,6 @@ int jacobian(realtype tt, realtype cj,
 
   py::array_t<double> jac_np_array;
 
-  // work out how to pass cj
   jac_np_array = python_functions.jac(tt, y_np, cj);
 
   double *jac_np_data_ptr = (double *)jac_np_array.request().ptr;
@@ -129,9 +135,45 @@ int jacobian(realtype tt, realtype cj,
   return (0);
 }
 
+int events(realtype t, N_Vector yy, N_Vector yp, realtype *events_ptr,
+           void *user_data)
+{
+
+  realtype *yval, *ypval;
+  yval = N_VGetArrayPointer(yy);
+  ypval = N_VGetArrayPointer(yp);
+
+  py::array_t<double> y_np = py::array_t<double>(2, yval);
+  py::array_t<double> yp_np = py::array_t<double>(2, ypval);
+
+  PybammFunctions *python_functions_ptr = static_cast<PybammFunctions *>(user_data);
+  PybammFunctions python_functions = *python_functions_ptr;
+
+  py::array_t<double> events_np_array;
+
+  events_np_array = python_functions.events(t, y_np);
+
+  double *events_np_data_ptr = (double *)events_np_array.request().ptr;
+
+  // just copying data into Sunmatrix (figure out how to pass pointers later)
+  int number_of_events = 2;
+  int i;
+  for (i = 0; i < number_of_events; i++)
+  {
+    events_ptr[i] = events_np_data_ptr[i];
+  }
+
+  // y = yval[0];
+  // a = yval[1];
+  // gout[0] = y - RCONST(1.0);
+  // gout[1] = a - RCONST(0.0); // dummy condition to show can pass vectors
+
+  return (0);
+}
+
 /* main program */
 
-np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res, jacobian_type jac)
+np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res, jacobian_type jac, event_type event)
 {
   auto t = t_np.unchecked<1>();
   // auto y0 = y0_np.unchecked<1>();
@@ -196,7 +238,7 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res
   retval = IDARootInit(ida_mem, num_of_events, events);
 
   // set pybamm functions by passing pointer to it
-  PybammFunctions pybamm_functions(res, jac);
+  PybammFunctions pybamm_functions(res, jac, event);
   void *user_data = &pybamm_functions;
   IDASetUserData(ida_mem, user_data);
 
@@ -247,10 +289,10 @@ PYBIND11_MODULE(sundials, m)
   m.doc() = "sundials solvers"; // optional module docstring
 
   m.def("solve", &solve, "The solve function",
-        py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"), py::return_value_policy::take_ownership);
+        py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"), py::arg("events"), py::return_value_policy::take_ownership);
 
   py::class_<PybammFunctions>(m, "PyBaMM Functions")
-      .def(py::init<const residual_type &, const jacobian_type &>())
+      .def(py::init<const residual_type &, const jacobian_type &, const event_type &>())
       .def("__call__", &PybammFunctions::operator());
   // .def("rhs"), &PybammFunctions::rhs());
 }
