@@ -1,9 +1,9 @@
 // minimal DAE example (dense)
 // next step is to add function to different file
 
-#include "residual.h" // add the residual header file
-#include "jacobian.h" // add the jacobian header file
-#include "events.h"   // add the events header file
+// #include "residual.h" // add the residual header file
+// #include "jacobian.h" // add the jacobian header file
+#include "events.h" // add the events header file
 
 #include <stdio.h>
 #include <math.h>
@@ -11,6 +11,7 @@
 #include <ida/ida.h>                          /* prototypes for IDA fcts., consts.    */
 #include <nvector/nvector_serial.h>           /* access to serial N_Vector            */
 #include <sunmatrix/sunmatrix_dense.h>        /* access to dense SUNMatrix            */
+#include <sunmatrix/sunmatrix_sparse.h>       /* access to dense SUNMatrix            */
 #include <sunlinsol/sunlinsol_dense.h>        /* access to dense SUNLinearSolver      */
 #include <sunnonlinsol/sunnonlinsol_newton.h> /* access to Newton SUNNonlinearSolver  */
 #include <sundials/sundials_types.h>          /* defs. of realtype, sunindextype      */
@@ -23,18 +24,127 @@
 #include <pybind11/functional.h>
 namespace py = pybind11;
 
+using residual_type = std::function<py::array_t<double>(double, py::array_t<double>, py::array_t<double>)>;
+using jacobian_type = std::function<py::array_t<double>(double, py::array_t<double>, double)>;
+using np_array = py::array_t<double>;
+
+class PybammFunctions
+{
+public:
+  PybammFunctions(const residual_type &res, const jacobian_type &jac)
+      : py_res(res), py_jac(jac)
+  {
+  }
+
+  py::array_t<double> operator()(double t, py::array_t<double> y, py::array_t<double> yp)
+  {
+    return py_res(t, y, yp);
+  }
+
+  py::array_t<double> res(double t, py::array_t<double> y, py::array_t<double> yp)
+  {
+    return py_res(t, y, yp);
+  }
+
+  py::array_t<double> jac(double t, py::array_t<double> y, double cj)
+  {
+    return py_jac(t, y, cj);
+  }
+
+private:
+  residual_type py_res;
+  jacobian_type py_jac;
+};
+
+int residual(realtype tres, N_Vector yy, N_Vector yp, N_Vector rr, void *user_data)
+{
+  PybammFunctions *python_functions_ptr = static_cast<PybammFunctions *>(user_data);
+  PybammFunctions python_functions = *python_functions_ptr;
+
+  realtype *yval, *ypval, *rval;
+  yval = N_VGetArrayPointer(yy);
+  ypval = N_VGetArrayPointer(yp);
+  rval = N_VGetArrayPointer(rr);
+
+  py::array_t<double> y_np = py::array_t<double>(2, yval);
+  py::array_t<double> yp_np = py::array_t<double>(2, ypval);
+
+  py::array_t<double> r_np;
+
+  double a = 1.0; // do this until figure out how to convert realtype to double
+  r_np = python_functions.res(a, y_np, yp_np);
+
+  rval = (double *)r_np.request().ptr;
+
+  return 0;
+}
+
+int jacobian(realtype tt, realtype cj,
+             N_Vector yy, N_Vector yp, N_Vector resvec,
+             SUNMatrix JJ, void *user_data,
+             N_Vector tempv1, N_Vector tempv2, N_Vector tempv3)
+{
+
+  realtype *yval, *ypval;
+  yval = N_VGetArrayPointer(yy);
+  ypval = N_VGetArrayPointer(yp);
+
+  PybammFunctions *python_functions_ptr = static_cast<PybammFunctions *>(user_data);
+  PybammFunctions python_functions = *python_functions_ptr;
+
+  py::array_t<double> y_np = py::array_t<double>(2, yval);
+  py::array_t<double> yp_np = py::array_t<double>(2, ypval);
+
+  // SM_ELEMENT_D(JJ, 0, 0) = -cj;
+  // SM_ELEMENT_D(JJ, 0, 1) = RCONST(1.0);
+  // SM_ELEMENT_D(JJ, 1, 0) = RCONST(0.0);
+  // SM_ELEMENT_D(JJ, 1, 1) = RCONST(-1.0);
+
+  // create pointer to data
+  realtype *jac_data_ptr = SM_DATA_D(JJ);
+
+  py::array_t<double> jac_np_array;
+
+  // work out how to pass cj
+  jac_np_array = python_functions.jac(tt, y_np, cj);
+
+  double *jac_np_data_ptr = (double *)jac_np_array.request().ptr;
+
+  // just copying data into Sunmatrix (figure out how to pass pointers later)
+  int i;
+  for (i = 0; i < jac_np_array.request().size; i++)
+  {
+    jac_data_ptr[i] = jac_np_data_ptr[i];
+  }
+
+  // SM_ELEMENT_D(JJ, 0, 0) = -cj;
+
+  // sparse stuff
+  // realtype *csr_index_vals_ptr = SM_INDEXVALS_S(JJ);
+  // realtype *csr_index_ptrs_ptr = SM_INDEXPTRS_S(JJ);
+  // I think we only need to update the data values??
+  // double a = 1.0;
+  // csr_data_ptr = python_functions.jac_(a, y_np, yp_np);
+
+  return (0);
+}
+
 /* main program */
 
-py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, py::array_t<double> yp0_np)
+np_array solve(np_array t_np, np_array y0_np, np_array yp0_np, residual_type res, jacobian_type jac)
 {
   auto t = t_np.unchecked<1>();
   // auto y0 = y0_np.unchecked<1>();
   auto yp0 = yp0_np.unchecked<1>();
 
+  // create class
+  // SetUserData pass pointer to my_rhs
+  // within residual.c cast void pointer to PyBaMMRHS class
+  // call my_rhs(args)
+
   auto y00 = y0_np.request();
   double *y0 = (double *)y00.ptr;
 
-  printf("t size %d", y00.size);
   int number_of_equations = y00.size;
 
   void *ida_mem;          // pointer to memory
@@ -42,7 +152,7 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
   realtype rtol, *yval, *ypval, *atval;
   int iout, retval, retvalr;
   int rootsfound[2];
-  SUNMatrix A;
+  SUNMatrix J;
   SUNLinearSolver LS;
   SUNNonlinearSolver NLS;
 
@@ -70,6 +180,7 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
 
   // initialise solver
   realtype t0 = RCONST(0.0);
+  // find in general how to pass methods as an argument to a function :)
   retval = IDAInit(ida_mem, residual, t0, yy, yp);
 
   // set tolerances
@@ -84,10 +195,21 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
   int num_of_events = 2;
   retval = IDARootInit(ida_mem, num_of_events, events);
 
+  // set pybamm functions by passing pointer to it
+  PybammFunctions pybamm_functions(res, jac);
+  void *user_data = &pybamm_functions;
+  IDASetUserData(ida_mem, user_data);
+
   // set linear solver
-  A = SUNDenseMatrix(NEQ, NEQ);
-  LS = SUNLinSol_Dense(yy, A);
-  retval = IDASetLinearSolver(ida_mem, LS, A);
+  J = SUNDenseMatrix(NEQ, NEQ); // jacobian type (must be dense for dense solvers, p183 of ida_guide.pdf)
+  LS = SUNLinSol_Dense(yy, J);
+  retval = IDASetLinearSolver(ida_mem, LS, J);
+
+  // sparse stuff  (must use sparse solvers e.g. KLU or SuperLUMT, p183 of ida_guide.pdf)
+  // J = SUNSparseMatrix(2, 2, 2, CSR_MAT); // template jacobian
+  // // set the indices values and pts of the jacobian (leaving the values unset)
+  // realtype *csr_index_vals_ptr = SM_INDEXVALS_S(JJ);
+  // realtype *csr_index_ptrs_ptr = SM_INDEXPTRS_S(JJ);
 
   retval = IDASetJacFn(ida_mem, jacobian);
 
@@ -111,7 +233,7 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
   /* Free memory */
   IDAFree(&ida_mem);
   SUNLinSolFree(LS);
-  SUNMatDestroy(A);
+  SUNMatDestroy(J);
   N_VDestroy(avtol);
   N_VDestroy(yp);
 
@@ -120,34 +242,15 @@ py::array_t<double> solve(py::array_t<double> t_np, py::array_t<double> y0_np, p
   return py::array_t<double>(number_of_equations, yval);
 }
 
-class PybammRHS
-{
-public:
-  using function_type = std::function<py::array_t<double>(double, py::array_t<double>, py::array_t<double>)>;
-
-  PybammRHS(const function_type &f)
-      : m_f(f)
-  {
-  }
-
-  py::array_t<double> operator()(const double t, py::array_t<double> y, py::array_t<double> yp)
-  {
-    return m_f(t, y, yp);
-  }
-
-private:
-  function_type m_f;
-};
-
 PYBIND11_MODULE(sundials, m)
 {
   m.doc() = "sundials solvers"; // optional module docstring
 
   m.def("solve", &solve, "The solve function",
-        py::arg("t"), py::arg("y0"), py::arg("yp0"),
-        py::return_value_policy::take_ownership);
+        py::arg("t"), py::arg("y0"), py::arg("yp0"), py::arg("res"), py::arg("jac"), py::return_value_policy::take_ownership);
 
-  py::class_<PybammRHS>(m, "RHS")
-      .def(py::init<const PybammRHS::function_type &>())
-      .def("__call__", &PybammRHS::operator());
+  py::class_<PybammFunctions>(m, "PyBaMM Functions")
+      .def(py::init<const residual_type &, const jacobian_type &>())
+      .def("__call__", &PybammFunctions::operator());
+  // .def("rhs"), &PybammFunctions::rhs());
 }
