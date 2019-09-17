@@ -48,7 +48,7 @@ OBJECTS_DEPENDENCIES = ${EXAMPLES_DEPENDENCIES:=.o}
 	${CC} ${CFLAGS} ${INCLUDES} -c $<
 
 # -----------------------------------------------------------------------------------------
-all: my_pybind
+all: dense
 
 my_simple_example: ${OBJECTS}
 	@for i in ${EXAMPLES} ; do \
@@ -62,13 +62,23 @@ python_shared_example: ${OBJECTS}
 	  ${CC} -FPIC -shared -o $${i}.so $${i}.o ${OBJECTS_DEPENDENCIES} ${CFLAGS} ${LDFLAGS} ${INCLUDES} -L${libdir} ${LIBRARIES} ${LINKFLAGS} ; \
 	done
 
-my_pybind:
+dense:
 	# @for i in ${EXAMPLES} ; do \
 	#   echo "${CC} -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/usr/include/python3.6m -o $${i}`python3-config --extension-suffix`${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${CFLAGS} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} "; \
 	#   ${CC} -O3 -Wall -shared -std=c++11 -fPIC -I/usr/include/python3.6m `python3 -m pybind11 --includes` ${INCLUDES}$ ${i}.o ${OBJECTS_DEPENDENCIES} ${LDFLAGS}  -L${libdir} ${LIBRARIES} ${LINKFLAGS} -o $${i}`python3-config --extension-suffix`;
 	# done
 	# g++ -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/home/scott/Projects/ida_test/sundials/instdir/include -o sundials`python3-config --extension-suffix` my_simple_example.cpp residual.c jacobian.c events.c -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
-	g++ -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/home/scott/Projects/ida_test/sundials/instdir/include -o sundials`python3-config --extension-suffix` my_simple_example.cpp -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
+
+	# meaning of compiler args
+	# g++ compiler, with level 3 optimisation (O3), with all warnings on (-Wall), to create a shared binary, using the c++11 standard
+	# (not sure what -fPIC is)
+	# `pthon3... includes` provides the address of the pybind header files
+	# address of the sundials header files
+	# -o sundials`pyth...` produces the outputed shared library with the name sundials.so.pyt... 
+	# my_simple_example.cpp is the source code 
+	# address of sundials libraries
+	# 
+	g++ -O3 -Wall -shared -std=c++11 -fPIC `python3 -m pybind11 --includes` -I/home/scott/Projects/ida_test/sundials/instdir/include -o sundials`python3-config --extension-suffix` sundials_dense.cpp -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;
 
 just_res: 
 	# g++ -O3 -Wall -shared -I/home/scott/Projects/ida_test/sundials/instdir/include -o residual.so residual.c -L/home/scott/Projects/ida_test/sundials/instdir/lib -lsundials_idas -lsundials_nvecserial -lm /usr/lib/x86_64-linux-gnu/librt.so -lblas -Wl,-rpath,/home/scott/Projects/ida_test/sundials/instdir/lib;

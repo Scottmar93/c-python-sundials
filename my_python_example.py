@@ -63,7 +63,37 @@ def jac_res(t, y, cj):
 
 use_jac = 1  # 1 to use, 0 to turn off
 
-time = sundials.solve(t, y0, yp0, res, jac_res, events, num_of_events, use_jac)
+# time = sundials.solve(t, y0, yp0, res, jac_res, events, num_of_events, use_jac)
+
+# initialise solver
+solver = sundials.Dense(t, y0, yp0)
+print("Init", solver.return_value)
+
+# link the python functions (if not using jac or events just set empty)
+solver.link_python_functions(rhs, jac, events, num_of_events)
+print("Link python functions", solver.return_value)
+
+# set the linear solver (will add options at a later stage)
+solver.set_linear_solver()
+print("Set linear solver", solver.return_value)
+
+# if want to use the jacobian then set_jacobian
+solver.set_jacobian()
+print("Set jacobian", solver.return_value)
+
+# if want to have events then set_events
+solver.set_events()
+print("Set events", solver.return_value)
+
+# define the tolerances
+rel_tol = 1e-4
+abs_tol = np.ones(y0.shape) * 1e-6
+solver.set_tolerances(rel_tol, abs_tol)
+print("Set tolerances", solver.return_value)
+
+# solve the model
+time = solver.solve()
+print("Set solve", solver.return_value)
 
 print(time)
 

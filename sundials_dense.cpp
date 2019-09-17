@@ -237,7 +237,6 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
 
   // initialise solver
   realtype t0 = RCONST(0.0);
-  // find in general how to pass methods as an argument to a function :)
   retval = IDAInit(ida_mem, residual, t0, yy, yp);
 
   // set tolerances
@@ -305,6 +304,136 @@ np_array solve(np_array t_np, np_array y0_np, np_array yp0_np,
   return py::array_t<double>(number_of_states, yval);
 }
 
+class Dense
+{
+public:
+  Dense(np_array t_np, np_array y0_np, np_array yp0_np)
+      : number_of_timesteps(t_np.request().size), number_of_states(y0_np.request().size)
+  {
+
+    // convert numpy array ICs into N_Vectors
+    auto tt = t_np.request();
+    t = (double *)tt.ptr;
+
+    auto y0 = y0_np.unchecked<1>();
+    auto yp0 = yp0_np.unchecked<1>();
+
+    yy = N_VNew_Serial(number_of_states);
+    yp = N_VNew_Serial(number_of_states);
+
+    yval = N_VGetArrayPointer(yy);
+    ypval = N_VGetArrayPointer(yp);
+    int i;
+    for (i = 0; i < number_of_states; i++)
+    {
+      yval[i] = y0[i];
+      ypval[i] = yp0[i];
+    }
+
+    // allocate memory for solver
+    ida_mem = IDACreate();
+
+    // initialise solver
+    retval = IDAInit(ida_mem, residual, t[0], yy, yp);
+  }
+
+  void link_python_functions(const residual_type &res, const jacobian_type jac, const event_type evt, const int n_events)
+  {
+    // store python functions in user data
+    PybammFunctions pybamm_functions(res, jac, evt, number_of_states, n_events);
+    void *user_data = &pybamm_functions;
+    IDASetUserData(ida_mem, user_data);
+  }
+
+  void set_linear_solver()
+  {
+    A = SUNDenseMatrix(number_of_states, number_of_states);
+    LS = SUNLinSol_Dense(yy, A);
+    retval = IDASetLinearSolver(ida_mem, LS, A);
+  }
+
+  void set_events()
+  {
+    const int n_events = number_of_events;
+    retval = IDARootInit(ida_mem, n_events, events);
+  }
+
+  void set_jacobian()
+  {
+    retval = IDASetJacFn(ida_mem, jacobian);
+  }
+
+  void set_tolerances(const double rel_tol, const np_array abs_tol_py)
+  {
+    auto abs_tol_unchecked = abs_tol_py.unchecked<1>();
+
+    N_Vector abs_tol;
+    realtype *abs_tol_ptr;
+    abs_tol_ptr = N_VGetArrayPointer(abs_tol);
+
+    int i;
+    for (i = 0; i < number_of_states; i++)
+    {
+      abs_tol_ptr[i] = abs_tol_unchecked[i];
+    }
+
+    retval = IDASVtolerances(ida_mem, rel_tol, abs_tol);
+  }
+
+  np_array solve()
+  {
+    realtype tout, tret;
+    realtype t_final = t[number_of_timesteps - 1];
+    while (tret < t_final)
+    {
+      // solver options:
+      // IDA_ONE_STEP_TSTOP
+      // IDA_NORMAL
+      retval = IDASolve(ida_mem, t_final, &tret, yy, yp, IDA_ONE_STEP);
+
+      if (retval == IDA_ROOT_RETURN)
+      {
+        break;
+      }
+
+      printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
+    }
+
+    /* Free memory */
+    IDAFree(&ida_mem);
+    SUNLinSolFree(LS);
+    SUNMatDestroy(A);
+    N_VDestroy(yp);
+    // check that abs_tol etc are not unfreed
+
+    printf("t=%f, y=%f, a=%f \n", tret, yval[0], yval[1]);
+
+    return py::array_t<double>(number_of_states, yval);
+  }
+
+  int retval;
+
+private:
+  // python functions
+  residual_type residual_py;
+  jacobian_type jacobian_py;
+  event_type events_py;
+
+  // input data
+  int number_of_timesteps;
+  int number_of_events;
+  int number_of_states;
+  bool use_jacobian;
+
+  // ida
+  void *ida_mem;
+  double *t;
+  N_Vector yy, yp;
+  realtype *yval, *ypval;
+  SUNMatrix A;
+  SUNLinearSolver LS;
+};
+
 PYBIND11_MODULE(sundials, m)
 {
   m.doc() = "sundials solvers"; // optional module docstring
@@ -315,8 +444,18 @@ PYBIND11_MODULE(sundials, m)
         py::arg("use_jacobian"),
         py::return_value_policy::take_ownership);
 
-  py::class_<PybammFunctions>(m, "PyBaMM Functions")
+  py::class_<PybammFunctions>(m, "pybamm_functions")
       .def(py::init<const residual_type &, const jacobian_type &, const event_type &, const int &, const int &>())
-      .def("__call__", &PybammFunctions::operator());
-  // .def("rhs"), &PybammFunctions::rhs());
+      .def("__call__", &PybammFunctions::operator())
+      .def("res", &PybammFunctions::res);
+
+  py::class_<Dense>(m, "Dense")
+      .def(py::init<np_array &, np_array &, np_array &>())
+      .def("link_python_functions", &Dense::link_python_functions)
+      .def("set_linear_solver", &Dense::set_linear_solver)
+      .def("set_events", &Dense::set_events)
+      .def("set_jacobian", &Dense::set_jacobian)
+      .def("set_tolerances", &Dense::set_tolerances)
+      .def("solve", &Dense::solve)
+      .def_readwrite("return_value", &Dense::retval);
 }
